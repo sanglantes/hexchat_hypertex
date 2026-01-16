@@ -1,37 +1,39 @@
 import hexchat
 import time
 import re
-
+import threading
+import queue
 import subprocess
 import sys
+import datetime
+import os
+import tempfile
 
-if sys.platform == "win32":
+import matplotlib
+matplotlib.use("Agg")
+
+if sys.platform == "win32": # this might also be an issue on linux. not sure.
     _orig_popen = subprocess.Popen
 
     def _hidden_popen(*args, **kwargs):
-        kwargs.setdefault(
-            "creationflags",
-            subprocess.CREATE_NO_WINDOW
-        )
+        kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
         return _orig_popen(*args, **kwargs)
 
     subprocess.Popen = _hidden_popen
 
 import matplotlib.pyplot as plt
-import datetime
-import os
-import tempfile
+plt.rcParams['text.usetex'] = True
 
 __module_name__ = "HyperTeX"
-__module_version__ = "1.0"
+__module_version__ = "1.1"
 __module_description__ = "Detect and render TeX and hyperlink to its output."
 
-print (f"Loading HyperTeX {time.time()}")
+hexchat.prnt(f"Loading HyperTeX {time.time()}")
+
+render_queue = queue.Queue()
 
 def render_tex(author: str, code: str, i: int) -> str:
     try:
-        plt.rcParams['text.usetex'] = True
-
         fig = plt.figure()
         ax = fig.add_axes([0, 0, 1, 1])
         ax.axis('off')
@@ -41,21 +43,46 @@ def render_tex(author: str, code: str, i: int) -> str:
         fig.canvas.draw()
         renderer = fig.canvas.get_renderer()
         bbox = text.get_window_extent(renderer=renderer)
-        bbox = bbox.expanded(
-            (bbox.width+2*2) / bbox.width,
-            (bbox.height+2*5) / bbox.height
-        )
-        fig.set_size_inches((bbox.width)/fig.dpi, (bbox.height+1)/fig.dpi)
-        text.set_position(((-bbox.x0)/fig.dpi, -bbox.y0/fig.dpi))
 
-        x = datetime.datetime.now()
-        png_name = f"{author}_{x.strftime('%y_%d_%H%M%S')}_{i}.png"
+        px = 2
+        py = 6
+        bbox = bbox.expanded((bbox.width+2*px) / bbox.width, (bbox.height+2*py) / bbox.height)
+
+        fig.set_size_inches(bbox.width / fig.dpi,bbox.height / fig.dpi)
+        text.set_position(-bbox.x0 / fig.dpi, -bbox.y0 / fig.dpi)
+
+        timestamp = datetime.datetime.now().strftime('%y_%d_%H%M%S')
+        png_name = f"{author}_{timestamp}_{i}.png"
         save_path = os.path.join(tempfile.gettempdir(), png_name)
-        plt.savefig(save_path, dpi=300, transparent=False)
+
+        plt.savefig(save_path, dpi=300, transparent=False, pad_inches=0)
+        plt.close(fig)
 
         return save_path
-    except Exception as e:
+
+    except Exception:
         return "INVALID_TEX"
+
+def render_worker():
+    while True:
+        job = render_queue.get()
+        if job is None:
+            break
+
+        author, code, index = job
+        path = render_tex(author, code, index)
+
+        def ui_print(userdata=None):
+            if path == "INVALID_TEX":
+                hexchat.prnt("\x02HyperTeX\x02: Failed to render.")
+            else:
+                hexchat.prnt(f"\x02[tex]\x02  file://{path}")
+            return False
+
+        hexchat.hook_timer(0, ui_print)
+        render_queue.task_done()
+
+threading.Thread(target=render_worker, daemon=True).start()
 
 pattern = re.compile(
     r'\$\$.*?\$\$|\$.*?\$', re.VERBOSE|re.DOTALL
@@ -64,12 +91,10 @@ pattern = re.compile(
 def preprint(words, word_eol, userdata):
     message = word_eol[1]
     author = words[0]
-    for e, m in enumerate(pattern.findall(message)):
-        output = render_tex(author, m, e)
-        if output == "INVALID_TEX":
-            hexchat.prnt("\x02HyperTeX\x02: Failed to render.")
-            continue
-        hexchat.prnt(f"\x02[tex]\x02  file://{output}")
+
+    for i, match in enumerate(pattern.findall(message)):
+        render_queue.put((author, match, i))
+
     return hexchat.EAT_NONE
 
 hexchat.hook_print("Channel Message", preprint)
