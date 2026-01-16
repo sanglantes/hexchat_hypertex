@@ -49,7 +49,7 @@ def render_tex(author: str, code: str, i: int) -> str:
         bbox = bbox.expanded((bbox.width+2*px) / bbox.width, (bbox.height+2*py) / bbox.height)
 
         fig.set_size_inches(bbox.width / fig.dpi,bbox.height / fig.dpi)
-        text.set_position(-bbox.x0 / fig.dpi, -bbox.y0 / fig.dpi)
+        text.set_position((-bbox.x0 / fig.dpi, -bbox.y0 / fig.dpi))
 
         timestamp = datetime.datetime.now().strftime('%y_%d_%H%M%S')
         png_name = f"{author}_{timestamp}_{i}.png"
