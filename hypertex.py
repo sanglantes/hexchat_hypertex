@@ -51,7 +51,7 @@ def render_tex(author: str, code: str, i: int) -> str:
         fig.set_size_inches(bbox.width / fig.dpi,bbox.height / fig.dpi)
         text.set_position((-bbox.x0 / fig.dpi, -bbox.y0 / fig.dpi))
 
-        timestamp = datetime.datetime.now().strftime('%y_%d_%H%M%S')
+        timestamp = datetime.datetime.now().strftime('%H%M%S')
         png_name = f"{author}_{timestamp}_{i}.png"
         save_path = os.path.join(tempfile.gettempdir(), png_name)
 
