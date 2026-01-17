@@ -12,6 +12,15 @@ import tempfile
 import matplotlib
 matplotlib.use("Agg")
 
+if sys.platform == "win32": # this might also be an issue on linux. not sure.
+    _orig_popen = subprocess.Popen
+
+    def _hidden_popen(*args, **kwargs):
+        kwargs.setdefault("creationflags", subprocess.CREATE_NO_WINDOW)
+        return _orig_popen(*args, **kwargs)
+
+    subprocess.Popen = _hidden_popen
+
 import matplotlib.pyplot as plt
 plt.rcParams['text.usetex'] = True
 
